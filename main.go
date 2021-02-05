@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/joho/godotenv"
+	"github.com/miekg/dns"
 	"github.com/sacloud/libsacloud/v2/sacloud"
 	"github.com/sacloud/libsacloud/v2/sacloud/search"
 	"github.com/sacloud/libsacloud/v2/sacloud/types"
@@ -22,19 +25,23 @@ type zoneOpts struct {
 }
 
 type raddOpts struct {
-	Zone  string `long:"zone" description:"dnszone name to add a record"`
-	TTL   int    `long:"ttl" description:"record TTL to add" default:"300"`
-	Name  string `long:"name" description:"record NAME to add" required:"true"`
-	Type  string `long:"type" description:"record TYPE to add" required:"true"`
-	RData string `long:"data" description:"record DATA to add" required:"true"`
+	Zone        string        `long:"zone" description:"dnszone name to add a record"`
+	TTL         int           `long:"ttl" description:"record TTL to add" default:"300"`
+	Name        string        `long:"name" description:"record NAME to add" required:"true"`
+	Type        string        `long:"type" description:"record TYPE to add" required:"true"`
+	RData       string        `long:"data" description:"record DATA to add" required:"true"`
+	Wait        bool          `long:"wait" description:"wait for record propagation"`
+	WaitTimeout time.Duration `long:"wait-timeout" description:"wait timeout for record propagation" default:"60s"`
 }
 
 type rsetOpts struct {
-	Zone  string `long:"zone" description:"dnszone name to set a record"`
-	TTL   int    `long:"ttl" description:"record TTL to set" default:"300"`
-	Name  string `long:"name" description:"record NAME to set" required:"true"`
-	Type  string `long:"type" description:"record TYPE to set" required:"true"`
-	RData string `long:"data" description:"record DATA to set" required:"true"`
+	Zone        string        `long:"zone" description:"dnszone name to set a record"`
+	TTL         int           `long:"ttl" description:"record TTL to set" default:"300"`
+	Name        string        `long:"name" description:"record NAME to set" required:"true"`
+	Type        string        `long:"type" description:"record TYPE to set" required:"true"`
+	RData       string        `long:"data" description:"record DATA to set" required:"true"`
+	Wait        bool          `long:"wait" description:"wait for record propagation"`
+	WaitTimeout time.Duration `long:"wait-timeout" description:"wait timeout for record propagation" default:"60s"`
 }
 
 type rdelOpts struct {
@@ -67,6 +74,114 @@ func dnsClient() (sacloud.DNSAPI, error) {
 		return nil, err
 	}
 	return sacloud.NewDNSOp(client), nil
+}
+
+func waitPropagation(timeout, interval time.Duration, zone *sacloud.DNS, r *sacloud.DNSRecord) error {
+	var lastErr error
+	timeUp := time.After(timeout)
+	log.Printf("Checking DNS record propagation.")
+	for {
+		select {
+		case <-timeUp:
+			return fmt.Errorf("timeout: last error: %w", lastErr)
+		default:
+		}
+
+		stop, err := checkPropagation(zone, r)
+		if stop {
+			return err
+		}
+		if err != nil {
+			lastErr = err
+		}
+		log.Printf("Waiting for DNS record propagation.")
+		time.Sleep(interval)
+	}
+
+}
+
+func availPropagation(t string) error {
+	switch strings.ToUpper(t) {
+	case "TXT":
+		return nil
+	case "CNAME":
+		return nil
+	default:
+		return fmt.Errorf("--wait isnt available for type '%s'", t)
+	}
+}
+
+func checkPropagation(zone *sacloud.DNS, r *sacloud.DNSRecord) (bool, error) {
+	result, err := dnsQuery(zone, r)
+	if err != nil {
+		return false, err
+	}
+	if result.Rcode != dns.RcodeSuccess {
+		return false, fmt.Errorf("error %s", dns.RcodeToString[result.Rcode])
+	}
+
+	var found = false
+	for _, ans := range result.Answer {
+		switch r.Type {
+		case types.DNSRecordTypes.TXT:
+			if a, ok := ans.(*dns.TXT); ok {
+				d := strings.Join(a.Txt, "")
+				if d == r.RData {
+					found = true
+					break
+				}
+			}
+		case types.DNSRecordTypes.CNAME:
+			if a, ok := ans.(*dns.CNAME); ok {
+				if a.Target == r.RData {
+					found = true
+					break
+				}
+			}
+		}
+	}
+	return found, nil
+}
+
+func dnsQuery(zone *sacloud.DNS, r *sacloud.DNSRecord) (*dns.Msg, error) {
+	rtype, ok := dns.StringToType[r.Type.String()]
+	if !ok {
+		return nil, fmt.Errorf("invalid type: %s", r.Type.String())
+	}
+	fqdn := zone.DNSZone
+	if r.Name != "@" {
+		fqdn = r.Name + "." + fqdn + "."
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion(fqdn, rtype)
+	m.SetEdns0(4096, false)
+	m.RecursionDesired = false
+
+	var in *dns.Msg
+	var err error
+
+	for _, ns := range zone.DNSNameServers {
+		in, err = sendDNSQuery(m, ns+":53")
+		if err == nil && len(in.Answer) > 0 {
+			break
+		}
+	}
+	return in, err
+}
+
+var dnsTimeout = 5 * time.Second
+
+func sendDNSQuery(m *dns.Msg, ns string) (*dns.Msg, error) {
+	udp := &dns.Client{Net: "udp", Timeout: dnsTimeout}
+	in, _, err := udp.Exchange(m, ns)
+
+	if in != nil && in.Truncated {
+		tcp := &dns.Client{Net: "tcp", Timeout: dnsTimeout}
+		in, _, err = tcp.Exchange(m, ns)
+	}
+
+	return in, err
 }
 
 func searchZone(ctx context.Context, condition *sacloud.FindCondition) (*sacloud.DNSFindResult, error) {
@@ -112,6 +227,11 @@ func (opts *listOpts) Execute(args []string) error {
 }
 
 func (opts *raddOpts) Execute(args []string) error {
+	if opts.Wait && opts.Type != "TXT" {
+		if err := availPropagation(opts.Type); err != nil {
+			return err
+		}
+	}
 	zone, err := fetchZone(context.Background(), opts.Zone)
 	if err != nil {
 		return err
@@ -141,10 +261,22 @@ func (opts *raddOpts) Execute(args []string) error {
 	if err != nil {
 		return err
 	}
+	if opts.Wait && new.Type == types.DNSRecordTypes.TXT {
+		err = waitPropagation(opts.WaitTimeout, 2*time.Second, zone, new)
+		if err != nil {
+			return err
+		}
+	}
+
 	return outJSON(result)
 }
 
 func (opts *rsetOpts) Execute(args []string) error {
+	if opts.Wait && opts.Type != "TXT" {
+		if err := availPropagation(opts.Type); err != nil {
+			return err
+		}
+	}
 	zone, err := fetchZone(context.Background(), opts.Zone)
 	if err != nil {
 		return err
@@ -175,6 +307,12 @@ func (opts *rsetOpts) Execute(args []string) error {
 	result, err := dnsOp.Update(context.Background(), zone.ID, updateReq)
 	if err != nil {
 		return err
+	}
+	if opts.Wait && new.Type == types.DNSRecordTypes.TXT {
+		err = waitPropagation(opts.WaitTimeout, 2*time.Second, zone, new)
+		if err != nil {
+			return err
+		}
 	}
 	return outJSON(result)
 }
@@ -214,9 +352,10 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 	opts := mainOpts{}
-	psr := flags.NewParser(&opts, flags.Default)
+	psr := flags.NewParser(&opts, flags.HelpFlag)
 	_, err = psr.Parse()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
