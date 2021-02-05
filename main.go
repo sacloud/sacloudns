@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/sacloud/libsacloud/v2/sacloud/search"
 	"github.com/sacloud/libsacloud/v2/sacloud/types"
 )
+
+// version by Makefile
+var version string
+
+type verOpts struct {
+}
 
 type listOpts struct {
 }
@@ -52,11 +59,12 @@ type rdelOpts struct {
 }
 
 type mainOpts struct {
-	ListCmd listOpts `command:"list" description:"list zones"`
-	ZoneCmd zoneOpts `command:"zone" description:"describe zone"`
-	RAddCmd raddOpts `command:"radd" description:"add a record"`
-	RSetCmd rsetOpts `command:"rset" description:"replace records or add a record"`
-	RDelCmd rdelOpts `command:"rdelete" description:"delete a record"`
+	ListCmd    listOpts `command:"list" description:"list zones"`
+	ZoneCmd    zoneOpts `command:"zone" description:"describe zone"`
+	RAddCmd    raddOpts `command:"radd" description:"add a record"`
+	RSetCmd    rsetOpts `command:"rset" description:"replace records or add a record"`
+	RDelCmd    rdelOpts `command:"rdelete" description:"delete a record"`
+	VersionCMD verOpts  `command:"version" description:"display version"`
 }
 
 func outJSON(result interface{}) error {
@@ -344,6 +352,17 @@ func (opts *rdelOpts) Execute(args []string) error {
 		return err
 	}
 	return outJSON(result)
+}
+
+func (opts *verOpts) Execute(args []string) error {
+	fmt.Printf(`%s %s
+Compiler: %s %s
+`,
+		os.Args[0],
+		version,
+		runtime.Compiler,
+		runtime.Version())
+	return nil
 }
 
 func main() {
