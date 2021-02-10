@@ -3,6 +3,14 @@ simple command line tool for sakura cloud dns
 
 ## Download and Install
 
+For Mac, use homebrew tap
+
+```
+$ brew install kazeburo/tap/sacloudns
+```
+
+### Download from GitHub Releases
+
 It's able to download from GitHub Release.
 
 https://github.com/kazeburo/sacloudns/releases
