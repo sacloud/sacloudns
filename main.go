@@ -366,13 +366,10 @@ Compiler: %s %s
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	godotenv.Load()
 	opts := mainOpts{}
 	psr := flags.NewParser(&opts, flags.HelpFlag)
-	_, err = psr.Parse()
+	_, err := psr.Parse()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
