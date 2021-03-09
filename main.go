@@ -34,7 +34,7 @@ type zoneOpts struct {
 type raddOpts struct {
 	Zone        string        `long:"zone" description:"dnszone name to add a record"`
 	TTL         int           `long:"ttl" description:"record TTL to add" default:"300"`
-	Name        string        `long:"name" description:"record NAME to add" required:"true"`
+	Name        string        `long:"name" description:"record NAME or FQDN(with final dot) to add" required:"true"`
 	Type        string        `long:"type" description:"record TYPE to add" required:"true"`
 	RData       string        `long:"data" description:"record DATA to add" required:"true"`
 	Wait        bool          `long:"wait" description:"wait for record propagation"`
@@ -44,7 +44,7 @@ type raddOpts struct {
 type rsetOpts struct {
 	Zone        string        `long:"zone" description:"dnszone name to set a record"`
 	TTL         int           `long:"ttl" description:"record TTL to set" default:"300"`
-	Name        string        `long:"name" description:"record NAME to set" required:"true"`
+	Name        string        `long:"name" description:"record NAME or FQDN(with final dot) to set" required:"true"`
 	Type        string        `long:"type" description:"record TYPE to set" required:"true"`
 	RData       string        `long:"data" description:"record DATA to set" required:"true"`
 	Wait        bool          `long:"wait" description:"wait for record propagation"`
@@ -52,10 +52,10 @@ type rsetOpts struct {
 }
 
 type rdelOpts struct {
-	Zone  string `long:"zone" description:"dnszone name to set a record"`
-	Name  string `long:"name" description:"record NAME to set" required:"true"`
-	Type  string `long:"type" description:"record TYPE to set" required:"true"`
-	RData string `long:"data" description:"record DATA to set" required:"true"`
+	Zone  string `long:"zone" description:"dnszone name to delete a record"`
+	Name  string `long:"name" description:"record NAME or FQDN(with final dot) to delete" required:"true"`
+	Type  string `long:"type" description:"record TYPE to delete" required:"true"`
+	RData string `long:"data" description:"record DATA to delete" required:"true"`
 }
 
 type mainOpts struct {
@@ -215,6 +215,13 @@ func fetchZone(ctx context.Context, name string) (*sacloud.DNS, error) {
 	return result.DNS[0], nil
 }
 
+func rewriteName(Name, Zone string) string {
+	if !strings.HasSuffix(Name, ".") {
+		return Name
+	}
+	return strings.TrimSuffix(Name, "."+Zone+".")
+}
+
 func (opts *zoneOpts) Execute(args []string) error {
 	if opts.Name == "" && len(args) > 0 {
 		opts.Name = args[0]
@@ -244,6 +251,7 @@ func (opts *raddOpts) Execute(args []string) error {
 	if err != nil {
 		return err
 	}
+	opts.Name = rewriteName(opts.Name, opts.Zone)
 	new := sacloud.NewDNSRecord(
 		types.EDNSRecordType(opts.Type),
 		opts.Name,
@@ -289,6 +297,7 @@ func (opts *rsetOpts) Execute(args []string) error {
 	if err != nil {
 		return err
 	}
+	opts.Name = rewriteName(opts.Name, opts.Zone)
 	new := sacloud.NewDNSRecord(
 		types.EDNSRecordType(opts.Type),
 		opts.Name,
@@ -330,6 +339,7 @@ func (opts *rdelOpts) Execute(args []string) error {
 	if err != nil {
 		return err
 	}
+	opts.Name = rewriteName(opts.Name, opts.Zone)
 	delete := sacloud.NewDNSRecord(
 		types.EDNSRecordType(opts.Type),
 		opts.Name,
