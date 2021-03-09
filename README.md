@@ -69,7 +69,7 @@ Help Options:
 [radd command options]
           --zone=         dnszone name to add a record
           --ttl=          record TTL to add (default: 300)
-          --name=         record NAME to add
+          --name=         record NAME or FQDN(with final dot) to add
           --type=         record TYPE to add
           --data=         record DATA to add
           --wait          wait for record propagation
@@ -85,7 +85,7 @@ Add an A record
 Add a TXT for DNS challenge
 
 ```
-./sacloudns radd --wait --zone example.com --name _acme --type TXT --data xxxxxx --ttl 30
+./sacloudns radd --wait --zone example.com --name _acme.example.com. --type TXT --data xxxxxx --ttl 30
 ```
 
 with `--wait` option, sacloudns wait for DNS record propergation. `--wait` is only available for TXT and CNAME
@@ -102,7 +102,7 @@ Help Options:
 [rset command options]
           --zone=         dnszone name to set a record
           --ttl=          record TTL to set (default: 300)
-          --name=         record NAME to set
+          --name=         record NAME or FQDN(with final dot) to set
           --type=         record TYPE to set
           --data=         record DATA to set
           --wait          wait for record propagation
@@ -121,13 +121,16 @@ Help Options:
   -h, --help      Show this help message
 
 [rdelete command options]
-          --zone= dnszone name to set a record
-          --name= record NAME to set
-          --type= record TYPE to set
-          --data= record DATA to set
+          --zone= dnszone name to delete a record
+          --name= record NAME or FQDN(with final dot) to delete
+          --type= record TYPE to delete
+          --data= record DATA to delete
 ```
 
 ```
 ./sacloudns rdelete --zone example.com --name test --type A --data 192.168.0.1
 ```
 
+```
+./sacloudns rdelete --zone example.com --name _acme.example.com. --type TXT --data xxxxxx --ttl 30
+```

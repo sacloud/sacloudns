@@ -23,3 +23,4 @@ brews:
     homepage: "https://github.com/kazeburo/sacloudns"
     install: |
       bin.install "sacloudns"
+  
