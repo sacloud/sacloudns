@@ -31,6 +31,10 @@ type zoneOpts struct {
 	Name string `long:"name" description:"dnszone name to find"`
 }
 
+type fzoneOpts struct {
+	Name string `long:"name" description:"record name to find zone"`
+}
+
 type raddOpts struct {
 	Zone        string        `long:"zone" description:"dnszone name to add a record"`
 	TTL         int           `long:"ttl" description:"record TTL to add" default:"300"`
@@ -59,12 +63,13 @@ type rdelOpts struct {
 }
 
 type mainOpts struct {
-	ListCmd    listOpts `command:"list" description:"list zones"`
-	ZoneCmd    zoneOpts `command:"zone" description:"describe zone"`
-	RAddCmd    raddOpts `command:"radd" description:"add a record"`
-	RSetCmd    rsetOpts `command:"rset" description:"replace records or add a record"`
-	RDelCmd    rdelOpts `command:"rdelete" description:"delete a record"`
-	VersionCMD verOpts  `command:"version" description:"display version"`
+	ListCmd    listOpts  `command:"list" description:"list zones"`
+	ZoneCmd    zoneOpts  `command:"zone" description:"describe zone"`
+	FzoneCmd   fzoneOpts `command:"fzone" description:"find zone for the record"`
+	RAddCmd    raddOpts  `command:"radd" description:"add a record"`
+	RSetCmd    rsetOpts  `command:"rset" description:"replace records or add a record"`
+	RDelCmd    rdelOpts  `command:"rdelete" description:"delete a record"`
+	VersionCMD verOpts   `command:"version" description:"display version"`
 }
 
 func outJSON(result interface{}) error {
@@ -233,6 +238,40 @@ func (opts *zoneOpts) Execute(args []string) error {
 	return outJSON(zone)
 }
 
+func searchZoneForRecord(ctx context.Context, record string) (*sacloud.DNS, error) {
+	testRecord := record
+	result, err := searchZone(ctx, &sacloud.FindCondition{})
+	if err != nil {
+		return nil, err
+	}
+	for testRecord != "" {
+		for _, z := range result.DNS {
+			if z.DNSZone == testRecord {
+				return z, nil
+			}
+		}
+		if strings.Contains(testRecord, ".") {
+			t := strings.SplitN(testRecord, ".", 2)
+			testRecord = t[1]
+			continue
+		}
+		break
+	}
+	return nil, fmt.Errorf("Could not find zone for %s", record)
+}
+
+func (opts *fzoneOpts) Execute(args []string) error {
+	if opts.Name == "" && len(args) > 0 {
+		opts.Name = args[0]
+	}
+	result, err := searchZoneForRecord(context.Background(), opts.Name)
+	if err != nil {
+		return err
+	}
+	os.Stdout.Write([]byte(result.DNSZone + "\n"))
+	return nil
+}
+
 func (opts *listOpts) Execute(args []string) error {
 	result, err := searchZone(context.Background(), &sacloud.FindCondition{})
 	if err != nil {
@@ -242,7 +281,7 @@ func (opts *listOpts) Execute(args []string) error {
 }
 
 func (opts *raddOpts) Execute(args []string) error {
-	if opts.Wait && opts.Type != "TXT" {
+	if opts.Wait {
 		if err := availPropagation(opts.Type); err != nil {
 			return err
 		}
@@ -288,7 +327,7 @@ func (opts *raddOpts) Execute(args []string) error {
 }
 
 func (opts *rsetOpts) Execute(args []string) error {
-	if opts.Wait && opts.Type != "TXT" {
+	if opts.Wait {
 		if err := availPropagation(opts.Type); err != nil {
 			return err
 		}

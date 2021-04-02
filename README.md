@@ -25,10 +25,12 @@ Help Options:
   -h, --help  Show this help message
 
 Available commands:
+  fzone    find zone for the record
   list     list zones
   radd     add a record
   rdelete  delete a record
   rset     replace records or add a record
+  version  display version
   zone     describe zone
 ```
 
@@ -134,3 +136,28 @@ Help Options:
 ```
 ./sacloudns rdelete --zone example.com --name _acme.example.com. --type TXT --data xxxxxx --ttl 30
 ```
+
+## Find zone for a record
+
+Find DNS zone for a record
+
+```
+% ./sacloudns fzone -h
+Usage:
+  sacloudns [OPTIONS] fzone [fzone-OPTIONS]
+
+Help Options:
+  -h, --help      Show this help message
+
+[fzone command options]
+          --name= record name to find zone
+```
+
+If zone exmaple.com is exits in the account.
+
+```
+./sacloudns fzone foo.bar.baz.example.com
+example.com
+```
+
+
