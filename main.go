@@ -209,15 +209,31 @@ func fetchZone(ctx context.Context, name string) (*sacloud.DNS, error) {
 	condition := &sacloud.FindCondition{
 		Filter: map[search.FilterKey]interface{}{},
 	}
-	condition.Filter[search.Key("Name")] = search.ExactMatch(name)
+	searchName := name
+	if len(searchName) > 63 {
+		searchName = searchName[0:63]
+	}
+	condition.Filter[search.Key("Name")] = search.PartialMatch(searchName)
 	result, err := searchZone(context.Background(), condition)
 	if err != nil {
 		return nil, err
 	}
-	if result.Count == 0 {
-		return nil, fmt.Errorf("not found: zone '%s'", name)
+	for _, d := range result.DNS {
+		if d.DNSZone == name {
+			return d, nil
+		}
 	}
-	return result.DNS[0], nil
+	// If zone is not found in result by Name, get all zones.
+	result, err = searchZone(context.Background(), &sacloud.FindCondition{})
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range result.DNS {
+		if d.DNSZone == name {
+			return d, nil
+		}
+	}
+	return nil, fmt.Errorf("not found: zone '%s'", name)
 }
 
 func rewriteName(Name, Zone string) string {
