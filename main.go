@@ -218,6 +218,16 @@ func fetchZone(ctx context.Context, name string) (*sacloud.DNS, error) {
 			return d, nil
 		}
 	}
+	// If zone is not found in result by Name, get all zones.
+	result, err = searchZone(context.Background(), &sacloud.FindCondition{})
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range result.DNS {
+		if d.DNSZone == name {
+			return d, nil
+		}
+	}
 	return nil, fmt.Errorf("not found: zone '%s'", name)
 }
 
